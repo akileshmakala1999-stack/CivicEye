@@ -3,6 +3,11 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "homepage": "https://civic-eye-pi-beige.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akileshmakala1999-stack/CivicEye.git"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

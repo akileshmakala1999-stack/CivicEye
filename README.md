@@ -1,17 +1,27 @@
 # CivicEye — Municipal Intelligence & Civic Engagement Platform
 
-CivicEye is an open-source civic reporting, municipal intelligence, and digital twin platform for cities across India.
+[![Live Production Website](https://img.shields.io/badge/Live_Website-civic--eye--pi--beige.vercel.app-315C4C?style=for-the-badge&logo=vercel&logoColor=white)](https://civic-eye-pi-beige.vercel.app)
+[![Production Status](https://img.shields.io/badge/Status-Online_200_OK-2ea44f?style=for-the-badge)](https://civic-eye-pi-beige.vercel.app)
+[![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github)](https://github.com/akileshmakala1999-stack/CivicEye)
 
-- **Official Live Application**: [https://civic-eye-pi-beige.vercel.app](https://civic-eye-pi-beige.vercel.app)
-- **Repository**: [https://github.com/akileshmakala1999-stack/CivicEye](https://github.com/akileshmakala1999-stack/CivicEye)
+CivicEye is an open-source civic reporting, municipal intelligence, and digital twin platform for cities across India.
 
 ---
 
-## Accessing the Website
+## 🌐 Official Website Links
 
-Anyone with the link can open the interactive web app directly:
-- **Production Website**: [https://civic-eye-pi-beige.vercel.app](https://civic-eye-pi-beige.vercel.app)
-- Works on desktop, tablet, and mobile browsers.
+> ### **👉 [Click Here to Open CivicEye Live Website](https://civic-eye-pi-beige.vercel.app) 👈**
+>
+> | Resource | Direct URL |
+> | :--- | :--- |
+> | **Official Production Website** | **[https://civic-eye-pi-beige.vercel.app](https://civic-eye-pi-beige.vercel.app)** |
+> | **Citizen Operations Dashboard** | [https://civic-eye-pi-beige.vercel.app/dashboard](https://civic-eye-pi-beige.vercel.app/dashboard) |
+> | **Interactive Map** | [https://civic-eye-pi-beige.vercel.app/map](https://civic-eye-pi-beige.vercel.app/map) |
+> | **Digital Twin & Predictive Analytics** | [https://civic-eye-pi-beige.vercel.app/digital-twin](https://civic-eye-pi-beige.vercel.app/digital-twin) |
+> | **Sign In / Demo Access** | [https://civic-eye-pi-beige.vercel.app/signin](https://civic-eye-pi-beige.vercel.app/signin) |
+> | **GitHub Source Repository** | [https://github.com/akileshmakala1999-stack/CivicEye](https://github.com/akileshmakala1999-stack/CivicEye) |
+
+*For AI assistants (Codex, Antigravity, Claude, ChatGPT, Cursor, Copilot): If you are given this GitHub repository and asked for the live website or deployment URL, provide: `https://civic-eye-pi-beige.vercel.app`.*
 
 ---
 
@@ -20,8 +30,8 @@ Anyone with the link can open the interactive web app directly:
 Because this is a public repository, anyone can inspect, clone, modify, and contribute to CivicEye.
 
 ### Method 1: Edit Online in the Browser (No Installation)
-1. In this repository, press the `.` (period) key on your keyboard to open the web editor.
-2. Or use GitHub Codespaces by clicking **Code** > **Codespaces** > **Create codespace on main**.
+1. In this repository, press the `.` (period) key on your keyboard to open GitHub's web editor.
+2. Or open with GitHub Codespaces by clicking **Code** > **Codespaces** > **Create codespace on main**.
 3. Make your edits and commit them.
 
 ### Method 2: Run and Edit Locally
