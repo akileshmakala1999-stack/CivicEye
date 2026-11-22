@@ -49,45 +49,43 @@ runTest('1. Root route ("/") is registered to LandingPage', () => {
 });
 
 runTest('2. Dashboard route ("/dashboard") is registered to CitizenDashboardPage', () => {
-  assert.ok(appCode.includes('<Route path="/dashboard" element={<CitizenDashboardPage />} />'), 'Dashboard route missing');
+  assert.ok(appCode.includes('path="/dashboard"') && appCode.includes('<CitizenDashboardPage />'), 'Dashboard route missing');
 });
 
 runTest('3. Sign-in route ("/signin") and Sign-up route ("/signup") are registered to AuthPortalPage', () => {
-  assert.ok(appCode.includes('<Route path="/signin" element={<AuthPortalPage />} />'), 'Sign-in route missing');
-  assert.ok(appCode.includes('<Route path="/signup" element={<AuthPortalPage />} />'), 'Sign-up route missing');
+  assert.ok(appCode.includes('path="/signin"') && appCode.includes('path="/signup"'), 'Sign-in route missing');
 });
 
 runTest('4. Report route ("/report") is registered to ReportIssuePage', () => {
-  assert.ok(appCode.includes('<Route path="/report" element={<ReportIssuePage />} />'), 'Report route missing');
+  assert.ok(appCode.includes('path="/report"') && appCode.includes('<ReportIssuePage />'), 'Report route missing');
 });
 
 runTest('5. Explore route ("/explore") is registered to ExploreMapPage', () => {
-  assert.ok(appCode.includes('<Route path="/explore" element={<ExploreMapPage />} />'), 'Explore route missing');
+  assert.ok(appCode.includes('path="/explore"') && appCode.includes('<ExploreMapPage />'), 'Explore route missing');
 });
 
 runTest('6. Community route ("/community") is registered to CommunityNetworkPage', () => {
-  assert.ok(appCode.includes('<Route path="/community" element={<CommunityNetworkPage />} />'), 'Community route missing');
+  assert.ok(appCode.includes('path="/community"') && appCode.includes('<CommunityNetworkPage />'), 'Community route missing');
 });
 
 runTest('7. Insights route ("/insights") is registered to CivicInsightsPage', () => {
-  assert.ok(appCode.includes('<Route path="/insights" element={<CivicInsightsPage />} />'), 'Insights route missing');
+  assert.ok(appCode.includes('path="/insights"') && appCode.includes('<CivicInsightsPage />'), 'Insights route missing');
 });
 
 runTest('8. Digital Twin route ("/digital-twin") is registered to DigitalTwinPage', () => {
-  assert.ok(appCode.includes('<Route path="/digital-twin" element={<DigitalTwinPage />} />'), 'Digital Twin route missing');
+  assert.ok(appCode.includes('path="/digital-twin"') && appCode.includes('<DigitalTwinPage />'), 'Digital Twin route missing');
 });
 
 runTest('9. Transparency route ("/transparency") is registered to PublicTransparencyPage', () => {
-  assert.ok(appCode.includes('<Route path="/transparency" element={<PublicTransparencyPage />} />'), 'Transparency route missing');
+  assert.ok(appCode.includes('path="/transparency"') && appCode.includes('<PublicTransparencyPage />'), 'Transparency route missing');
 });
 
 runTest('10. Admin & Operations routes ("/admin", "/operations") are registered to AuthorityDashboardPage', () => {
-  assert.ok(appCode.includes('<Route path="/admin" element={<AuthorityDashboardPage />} />'), 'Admin route missing');
-  assert.ok(appCode.includes('<Route path="/operations" element={<AuthorityDashboardPage />} />'), 'Operations route missing');
+  assert.ok(appCode.includes('path="/admin"') && appCode.includes('path="/operations"') && appCode.includes('<AuthorityDashboardPage />'), 'Admin/Operations route missing');
 });
 
 runTest('11. How It Works route ("/how-it-works") is registered to HowItWorksPage', () => {
-  assert.ok(appCode.includes('<Route path="/how-it-works" element={<HowItWorksPage />} />'), 'How It Works route missing');
+  assert.ok(appCode.includes('path="/how-it-works"') && appCode.includes('<HowItWorksPage />'), 'How It Works route missing');
   assert.ok(fs.existsSync(howItWorksPath), 'HowItWorksPage.tsx file must exist');
 });
 

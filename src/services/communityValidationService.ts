@@ -5,13 +5,27 @@ import {
   CommunityActivityEvent,
   ResolutionVerificationInfo,
   IssueConditionType,
+  ValidationRetrievalState,
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { authService } from './authService';
+import { durableStorage } from '../lib/durableStorage';
 
 const VALIDATIONS_STORAGE_KEY = 'civiceye_community_validations';
 const EVIDENCE_STORAGE_KEY = 'civiceye_additional_evidence';
 const EVENTS_STORAGE_KEY = 'civiceye_report_events';
 const RESOLUTIONS_STORAGE_KEY = 'civiceye_resolution_verifications';
+const IDEMPOTENCY_STORAGE_KEY = 'civiceye_idempotency_registry';
+
+export interface DurableIdempotencyEntry {
+  idempotencyKey: string;
+  userId: string;
+  reportId: string;
+  action: CommunityValidationAction;
+  userAction: CommunityValidationAction | null;
+  timestamp: number;
+  message: string;
+}
 
 // Initial seed validations for demo reports
 const INITIAL_VALIDATIONS: CommunityValidationRecord[] = [
@@ -193,6 +207,9 @@ class CommunityValidationService {
   private evidenceList: AdditionalEvidenceRecord[] = [];
   private eventsList: CommunityActivityEvent[] = [];
   private resolutions: Record<string, ResolutionVerificationInfo> = {};
+  private processedIdempotencyKeys: Set<string> = new Set();
+  private durableIdempotencyMap: Map<string, DurableIdempotencyEntry> = new Map();
+  private validationStates: Record<string, ValidationRetrievalState> = {};
 
   constructor() {
     this.loadFromStorage();
@@ -211,6 +228,19 @@ class CommunityValidationService {
 
       const savedRes = localStorage.getItem(RESOLUTIONS_STORAGE_KEY);
       this.resolutions = savedRes ? JSON.parse(savedRes) : INITIAL_RESOLUTIONS;
+
+      const savedIdem = localStorage.getItem(IDEMPOTENCY_STORAGE_KEY);
+      if (savedIdem) {
+        const parsed = JSON.parse(savedIdem);
+        if (typeof parsed === 'object' && parsed !== null) {
+          Object.values(parsed).forEach((entry: any) => {
+            if (entry && entry.idempotencyKey) {
+              this.durableIdempotencyMap.set(entry.idempotencyKey, entry);
+              this.processedIdempotencyKeys.add(entry.idempotencyKey);
+            }
+          });
+        }
+      }
     } catch (e) {
       console.warn('Failed to load community validation data from localStorage', e);
       this.validations = INITIAL_VALIDATIONS;
@@ -218,6 +248,25 @@ class CommunityValidationService {
       this.eventsList = INITIAL_EVENTS;
       this.resolutions = INITIAL_RESOLUTIONS;
     }
+
+    // Default seed reports to loaded state
+    ['rep-1', 'rep-2', 'rep-3', 'rep-4', 'rep-5'].forEach((id) => {
+      if (!this.validationStates[id]) {
+        this.validationStates[id] = 'loaded';
+      }
+    });
+
+    // Asynchronously load durable operations from IndexedDB where available
+    durableStorage.getAllIdempotentOps().then((ops) => {
+      if (ops && typeof ops === 'object') {
+        Object.values(ops).forEach((entry: any) => {
+          if (entry && entry.idempotencyKey) {
+            this.durableIdempotencyMap.set(entry.idempotencyKey, entry);
+            this.processedIdempotencyKeys.add(entry.idempotencyKey);
+          }
+        });
+      }
+    }).catch(() => {});
   }
 
   private saveToStorage() {
@@ -226,6 +275,12 @@ class CommunityValidationService {
       localStorage.setItem(EVIDENCE_STORAGE_KEY, JSON.stringify(this.evidenceList));
       localStorage.setItem(EVENTS_STORAGE_KEY, JSON.stringify(this.eventsList));
       localStorage.setItem(RESOLUTIONS_STORAGE_KEY, JSON.stringify(this.resolutions));
+
+      const idemObj: Record<string, DurableIdempotencyEntry> = {};
+      this.durableIdempotencyMap.forEach((val, key) => {
+        idemObj[key] = val;
+      });
+      localStorage.setItem(IDEMPOTENCY_STORAGE_KEY, JSON.stringify(idemObj));
 
       // Broadcast update event
       window.dispatchEvent(new CustomEvent('civiceye_community_updated'));
@@ -252,18 +307,66 @@ class CommunityValidationService {
     userName?: string;
     userRole?: 'citizen' | 'authority';
     note?: string;
+    idempotencyKey?: string;
+    isRetry?: boolean;
+    allowToggle?: boolean;
   }): { success: boolean; userAction: CommunityValidationAction | null; message: string } {
     const {
       reportId,
       action,
-      userId = 'usr-aditya',
-      userName = 'Aditya (Citizen Guardian)',
-      userRole = 'citizen',
       note,
+      idempotencyKey,
+      isRetry = false,
+      allowToggle = true,
     } = params;
 
+    // Authenticated identity validation
+    const currentSession = authService.getCurrentSessionSync();
+    let effectiveUserId = params.userId || 'usr-aditya';
+    let effectiveUserName = params.userName || 'Aditya (Citizen Guardian)';
+    let effectiveUserRole: 'citizen' | 'authority' = params.userRole || 'citizen';
+
+    if (currentSession && currentSession.user) {
+      // Disallow cross-account spoofing
+      if (params.userId && params.userId !== currentSession.user.id && currentSession.user.user_metadata?.role === 'citizen') {
+        throw new Error('Security Violation: Citizens cannot submit validation votes under another user identity.');
+      }
+      effectiveUserId = currentSession.user.id;
+      effectiveUserName = currentSession.user.user_metadata?.full_name || effectiveUserName;
+      effectiveUserRole = currentSession.user.user_metadata?.role === 'authority' ? 'authority' : 'citizen';
+    }
+
+    // Strict action enumeration validation
+    const VALID_ACTIONS: CommunityValidationAction[] = ['still_exists', 'getting_worse', 'appears_fixed', 'incorrect_report'];
+    if (!VALID_ACTIONS.includes(action)) {
+      throw new Error(`Validation Error: Invalid community validation action "${action}".`);
+    }
+
+    // Durable idempotency check
+    if (idempotencyKey) {
+      const existingEntry = this.durableIdempotencyMap.get(idempotencyKey);
+      if (existingEntry) {
+        // Identity binding check
+        if (existingEntry.userId !== effectiveUserId) {
+          throw new Error(`Security Policy Violation: Idempotency key "${idempotencyKey}" is bound to user "${existingEntry.userId}", not "${effectiveUserId}".`);
+        }
+        // Payload consistency check
+        if (existingEntry.reportId !== reportId || existingEntry.action !== action) {
+          throw new Error(`Idempotency Conflict: Reusing idempotency key "${idempotencyKey}" with different payload is rejected.`);
+        }
+        return {
+          success: true,
+          userAction: existingEntry.userAction,
+          message: 'Idempotent acknowledgement: Validation already processed.',
+        };
+      }
+    }
+
+    const userId = effectiveUserId;
+    const userName = effectiveUserName;
+
     const existingIndex = this.validations.findIndex(
-      (v) => v.reportId === reportId && v.userId === userId
+      (v) => v.reportId === reportId && v.userId === effectiveUserId
     );
 
     const nowStr = 'Just now';
@@ -274,18 +377,43 @@ class CommunityValidationService {
     if (existingIndex >= 0) {
       const existing = this.validations[existingIndex];
       if (existing.action === action) {
-        // Toggle OFF (User removes their contribution)
+        // If it's a retry or idempotency replay, DO NOT toggle off! Preserve existing vote!
+        if (isRetry || idempotencyKey || !allowToggle) {
+          const res = {
+            success: true,
+            userAction: existing.action,
+            message: `Validation "${action.replace('_', ' ').toUpperCase()}" is already active.`,
+          };
+          if (idempotencyKey) {
+            this.processedIdempotencyKeys.add(idempotencyKey);
+            const entry: DurableIdempotencyEntry = {
+              idempotencyKey,
+              userId: effectiveUserId,
+              reportId,
+              action,
+              userAction: existing.action,
+              timestamp: Date.now(),
+              message: res.message,
+            };
+            this.durableIdempotencyMap.set(idempotencyKey, entry);
+            this.saveToStorage();
+            durableStorage.saveIdempotentOp(entry).catch(() => {});
+          }
+          return res;
+        }
+        // User explicitly clicks the same button to toggle OFF
         this.validations.splice(existingIndex, 1);
         resultingAction = null;
         message = 'Your validation has been removed.';
       } else {
-        // Update existing vote to a new action
+        // Update existing vote to a new action (e.g. changing from still_exists to appears_fixed)
         this.validations[existingIndex] = {
           ...existing,
           action,
           timestamp: nowStr,
           createdAt: nowTime,
           note: note || existing.note,
+          idempotencyKey,
         };
         message = `Updated validation to "${action.replace('_', ' ').toUpperCase()}".`;
       }
@@ -294,16 +422,32 @@ class CommunityValidationService {
       const newRecord: CommunityValidationRecord = {
         id: `val-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         reportId,
-        userId,
-        userName,
-        userRole,
+        userId: effectiveUserId,
+        userName: effectiveUserName,
+        userRole: effectiveUserRole,
         action,
         timestamp: nowStr,
         createdAt: nowTime,
         note,
+        idempotencyKey,
       };
       this.validations.push(newRecord);
       message = `Validation "${action.replace('_', ' ').toUpperCase()}" recorded.`;
+    }
+
+    if (idempotencyKey) {
+      this.processedIdempotencyKeys.add(idempotencyKey);
+      const entry: DurableIdempotencyEntry = {
+        idempotencyKey,
+        userId: effectiveUserId,
+        reportId,
+        action,
+        userAction: resultingAction,
+        timestamp: nowTime,
+        message,
+      };
+      this.durableIdempotencyMap.set(idempotencyKey, entry);
+      durableStorage.saveIdempotentOp(entry).catch(() => {});
     }
 
     // Add activity event for timeline
@@ -322,6 +466,11 @@ class CommunityValidationService {
           'advisory',
           'Issue Condition Escalated',
           `A neighbor flagged this issue as worsening. Municipal priority score has adjusted.`
+        );
+        window.dispatchEvent(
+          new CustomEvent('civiceye_issue_worsening', {
+            detail: { reportId, userName, note },
+          })
         );
       } else if (resultingAction === 'appears_fixed') {
         title = 'Neighbor Reported Hazard Appears Fixed';
@@ -513,11 +662,6 @@ class CommunityValidationService {
     info.challengePhotoUrl = photoUrl;
     info.challengedBy = userName;
     info.reopenedForReview = true;
-    void userId;
-    info.challengeReason = reason;
-    info.challengePhotoUrl = photoUrl;
-    info.challengedBy = userName;
-    info.reopenedForReview = true;
 
     // Record resolution challenge event in timeline
     this.eventsList.unshift({
@@ -551,6 +695,19 @@ class CommunityValidationService {
       'resolution',
       'Resolution Challenged & Reopened',
       `${userName} disputed the official resolution with new evidence. Report reopened for review.`
+    );
+
+    // Cross-module trigger: notify Operations Service to reopen work order & return for rework
+    window.dispatchEvent(
+      new CustomEvent('civiceye_resolution_challenged', {
+        detail: {
+          reportId,
+          citizenName: userName,
+          citizenId: userId,
+          reason,
+          photoUrl,
+        },
+      })
     );
 
     this.saveToStorage();
@@ -617,6 +774,61 @@ class CommunityValidationService {
     window.dispatchEvent(
       new CustomEvent('civiceye_new_notification', { detail: notificationPayload })
     );
+  }
+
+  // Phase 12.3.2: Validation state tracking
+  getValidationState(reportId: string): ValidationRetrievalState {
+    if (this.validationStates[reportId]) {
+      return this.validationStates[reportId];
+    }
+    const hasRecords = this.validations.some((v) => v.reportId === reportId);
+    if (hasRecords) {
+      return 'loaded';
+    }
+    return 'uninitialized';
+  }
+
+  setValidationState(reportId: string, state: ValidationRetrievalState): void {
+    this.validationStates[reportId] = state;
+  }
+
+  hasDurableIdempotencyKey(key: string): boolean {
+    return this.durableIdempotencyMap.has(key);
+  }
+
+  getDurableIdempotencyRecord(key: string): DurableIdempotencyEntry | undefined {
+    return this.durableIdempotencyMap.get(key);
+  }
+
+  /**
+   * Non-destructive removal of validations and evidence for a specific report (used for demo scenario resets)
+   */
+  removeValidationsForReport(reportId: string): boolean {
+    const beforeVal = this.validations.length;
+    this.validations = this.validations.filter((v) => v.reportId !== reportId);
+    this.evidenceList = this.evidenceList.filter((e) => e.reportId !== reportId);
+    this.eventsList = this.eventsList.filter((ev) => ev.reportId !== reportId);
+    delete this.resolutions[reportId];
+    delete this.validationStates[reportId];
+
+    // Clear idempotency keys associated with this report so repeat scenario runs re-validate
+    const keysToRemove: string[] = [];
+    this.durableIdempotencyMap.forEach((entry, key) => {
+      if (entry.reportId === reportId) {
+        keysToRemove.push(key);
+      }
+    });
+    keysToRemove.forEach((key) => {
+      this.durableIdempotencyMap.delete(key);
+      this.processedIdempotencyKeys.delete(key);
+    });
+
+    if (this.validations.length !== beforeVal || keysToRemove.length > 0) {
+      this.saveToStorage();
+      window.dispatchEvent(new CustomEvent('civiceye_community_updated'));
+      return true;
+    }
+    return false;
   }
 }
 

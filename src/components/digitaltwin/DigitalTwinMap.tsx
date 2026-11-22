@@ -84,7 +84,7 @@ export const DigitalTwinMap: React.FC<DigitalTwinMapProps> = ({
   };
 
   return (
-    <div className="relative w-full h-[620px] bg-[#F5F5F2] rounded-lg border border-[#E4E6E2] overflow-hidden select-none">
+    <div className="relative w-full h-[440px] sm:h-[620px] bg-[#F5F5F2] rounded-lg border border-[#E4E6E2] overflow-hidden select-none">
       {/* Top Right Controls & Accuracy Info Button */}
       <div className="absolute top-3 right-3 z-20 flex flex-col items-end space-y-1.5">
         <div className="flex flex-col space-y-1 bg-white/95 p-1 rounded-md border border-[#E4E6E2] shadow-sm backdrop-blur-sm">

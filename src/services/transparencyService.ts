@@ -150,7 +150,12 @@ class TransparencyService {
       }
     });
 
-    const resolutionRate = totalReports > 0 ? Math.round((reportsCompleted / totalReports) * 100) : 0;
+    // Mathematical rigor: Exclude rejected/duplicate reports from actionable resolution denominator
+    const actionableTotal = reports.filter(
+      (r) => !['Rejected', 'Cancelled', 'Duplicate'].includes(r.status as string)
+    ).length;
+
+    const resolutionRate = actionableTotal > 0 ? Math.round((reportsCompleted / actionableTotal) * 100) : 0;
     const citizenVerificationRate =
       reportsCompleted > 0 ? Math.round((citizenVerifiedResolutions / reportsCompleted) * 100) : 100;
     const onTimeRate = slaMetrics.complianceRate;
@@ -932,6 +937,20 @@ class TransparencyService {
 
   getResolutionFeedback(reportId: string): ResolutionQualityFeedback[] {
     return this.feedbackList.filter((f) => f.reportId === reportId);
+  }
+
+  /**
+   * Non-destructive removal of resolution feedback for a specific report (used for demo scenario resets)
+   */
+  removeFeedbackForReport(reportId: string): boolean {
+    const beforeCount = this.feedbackList.length;
+    this.feedbackList = this.feedbackList.filter((f) => f.reportId !== reportId);
+    if (this.feedbackList.length !== beforeCount) {
+      this.saveToStorage();
+      window.dispatchEvent(new CustomEvent('civiceye_transparency_updated'));
+      return true;
+    }
+    return false;
   }
 
   getFeedbackAggregateStats(): {

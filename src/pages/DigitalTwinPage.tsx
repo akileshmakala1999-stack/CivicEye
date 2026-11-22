@@ -67,9 +67,22 @@ export const DigitalTwinPage: React.FC = () => {
   const [isCompareOpen, setIsCompareOpen] = useState<boolean>(false);
   const [compareScenariosList, setCompareScenariosList] = useState<SimulationResult[]>([]);
 
-  // Load Data
+  // Load Data with real-time cross-module event synchronization
   useEffect(() => {
     loadData();
+
+    const handleUpdate = () => {
+      loadData();
+    };
+
+    window.addEventListener('civiceye_reports_updated', handleUpdate);
+    window.addEventListener('civiceye_operations_updated', handleUpdate);
+    window.addEventListener('civiceye_coordination_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('civiceye_reports_updated', handleUpdate);
+      window.removeEventListener('civiceye_operations_updated', handleUpdate);
+      window.removeEventListener('civiceye_coordination_updated', handleUpdate);
+    };
   }, [currentRole]);
 
   const loadData = async () => {
@@ -346,11 +359,11 @@ export const DigitalTwinPage: React.FC = () => {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex space-x-6 text-xs font-semibold border-t border-[#E4E6E2]/60">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex space-x-6 text-xs font-semibold border-t border-[#E4E6E2]/60 overflow-x-auto whitespace-nowrap min-w-0 max-w-full">
           <button
             type="button"
             onClick={() => setActiveTab('map')}
-            className={`py-2.5 border-b-2 transition-colors flex items-center space-x-1.5 ${
+            className={`py-2.5 border-b-2 transition-colors flex items-center space-x-1.5 flex-shrink-0 ${
               activeTab === 'map'
                 ? 'border-[#315C4C] text-[#315C4C]'
                 : 'border-transparent text-[#737773] hover:text-[#171918]'
@@ -363,7 +376,7 @@ export const DigitalTwinPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('simulation')}
-            className={`py-2.5 border-b-2 transition-colors flex items-center space-x-1.5 ${
+            className={`py-2.5 border-b-2 transition-colors flex items-center space-x-1.5 flex-shrink-0 ${
               activeTab === 'simulation'
                 ? 'border-[#315C4C] text-[#315C4C]'
                 : 'border-transparent text-[#737773] hover:text-[#171918]'
@@ -379,7 +392,7 @@ export const DigitalTwinPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('cascades')}
-            className={`py-2.5 border-b-2 transition-colors flex items-center space-x-1.5 ${
+            className={`py-2.5 border-b-2 transition-colors flex items-center space-x-1.5 flex-shrink-0 ${
               activeTab === 'cascades'
                 ? 'border-[#315C4C] text-[#315C4C]'
                 : 'border-transparent text-[#737773] hover:text-[#171918]'
@@ -392,12 +405,12 @@ export const DigitalTwinPage: React.FC = () => {
       </div>
 
       {/* Main Content Area */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 w-full min-w-0 max-w-full">
         {/* TAB 1: SPATIAL DIGITAL TWIN MAP */}
         {activeTab === 'map' && (
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 w-full min-w-0 max-w-full">
             {/* Left Column: 12 Toggleable Intelligence Layers */}
-            <div className="lg:col-span-1">
+            <div className="lg:col-span-1 w-full min-w-0">
               <DigitalTwinLayersPanel
                 layers={layers}
                 onToggleLayer={handleToggleLayer}
@@ -406,7 +419,7 @@ export const DigitalTwinPage: React.FC = () => {
             </div>
 
             {/* Right Column: Spatial Digital Twin Map Canvas */}
-            <div className="lg:col-span-3 space-y-4">
+            <div className="lg:col-span-3 space-y-4 w-full min-w-0">
               <DigitalTwinMap
                 reports={validReports}
                 nonGeographicCount={nonGeographicReports.length}
@@ -423,14 +436,14 @@ export const DigitalTwinPage: React.FC = () => {
 
               {/* Quick Simulation Scrub Bar if active */}
               {activeSimulation && (
-                <div className="bg-white p-3 rounded-lg border border-[#E4E6E2] shadow-xs flex items-center justify-between text-xs">
+                <div className="bg-white p-3 rounded-lg border border-[#E4E6E2] shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs w-full min-w-0">
                   <div className="flex items-center space-x-2">
                     <Calendar className="w-4 h-4 text-[#315C4C]" />
                     <span className="font-semibold text-[#171918]">
                       Time Travel Scrubber (Simulation: {activeSimulation.parameters.strategyId}):
                     </span>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex flex-wrap items-center gap-1.5 sm:space-x-2">
                     {[0, 1, 3, 7, 14, 30].map((d) => (
                       <button
                         key={d}

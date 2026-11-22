@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   DashboardReport,
@@ -62,12 +62,12 @@ export type MapLayer =
 
 // Convert Hyderabad lat/lng to percentage coordinates on the map view
 function projectCoordinates(
-  lat: number,
-  lng: number,
+  lat?: number,
+  lng?: number,
   fallbackX?: number,
   fallbackY?: number
 ): { x: number; y: number } {
-  if (fallbackX !== undefined && fallbackY !== undefined) {
+  if ((lat === undefined || lat === null || isNaN(lat)) && fallbackX !== undefined && fallbackY !== undefined) {
     return { x: fallbackX, y: fallbackY };
   }
   const minLat = 17.405;
@@ -75,8 +75,11 @@ function projectCoordinates(
   const minLng = 78.345;
   const maxLng = 78.455;
 
-  const x = Math.min(92, Math.max(8, ((lng - minLng) / (maxLng - minLng)) * 100));
-  const y = Math.min(92, Math.max(8, (1 - (lat - minLat) / (maxLat - minLat)) * 100));
+  const latVal = lat ?? 17.4325;
+  const lngVal = lng ?? 78.4071;
+
+  const x = Math.min(92, Math.max(8, ((lngVal - minLng) / (maxLng - minLng)) * 100));
+  const y = Math.min(92, Math.max(8, (1 - (latVal - minLat) / (maxLat - minLat)) * 100));
   return { x: Math.round(x), y: Math.round(y) };
 }
 
@@ -99,6 +102,22 @@ export const ExploreMapPage: React.FC = () => {
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedSignal, setSelectedSignal] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Dynamically populated list of wards/places across all registered incidents
+  const availableWards = useMemo(() => {
+    const wards = new Set<string>([
+      'Jubilee Hills',
+      'Banjara Hills',
+      'Madhapur',
+      'Gachibowli',
+      'Kondapur',
+      'Begumpet',
+    ]);
+    incidents.forEach((i) => {
+      if (i.neighborhood) wards.add(i.neighborhood);
+    });
+    return Array.from(wards);
+  }, [incidents]);
 
   // Load and merge all reports with spatial coordinates
   const loadReports = async () => {
@@ -292,10 +311,10 @@ export const ExploreMapPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F5F2] text-[#171918] py-6 sm:py-10 px-4 sm:px-6 lg:px-8 flex flex-col">
-      <div className="max-w-7xl mx-auto w-full space-y-6 flex-1 flex flex-col">
+    <div className="min-h-screen bg-[#F5F5F2] text-[#171918] py-6 sm:py-10 px-4 sm:px-6 lg:px-8 flex flex-col overflow-x-hidden w-full max-w-full">
+      <div className="max-w-7xl mx-auto w-full space-y-6 flex-1 flex flex-col min-w-0 max-w-full">
         {/* Top Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E4E6E2]">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E4E6E2] min-w-0">
           <div>
             <div className="flex items-center gap-2 text-xs font-mono text-[#315C4C] font-semibold mb-1">
               <MapPin size={14} />
@@ -326,7 +345,7 @@ export const ExploreMapPage: React.FC = () => {
         </div>
 
         {/* FEATURE 3: INTERACTIVE MAP LAYER SELECTOR */}
-        <div className="flex items-center gap-2 border-b border-[#E4E6E2] overflow-x-auto pb-2 text-xs">
+        <div className="flex items-center gap-2 border-b border-[#E4E6E2] overflow-x-auto pb-2 text-xs w-full min-w-0 max-w-full">
           <span className="flex items-center gap-1.5 font-mono text-[11px] font-bold text-[#737773] uppercase mr-1">
             <Layers size={13} className="text-[#315C4C]" />
             <span>Map Layer:</span>
@@ -378,19 +397,18 @@ export const ExploreMapPage: React.FC = () => {
               />
             </div>
 
-            {/* Ward Filter */}
+            {/* Ward / Place Filter */}
             <select
               value={selectedWard}
               onChange={(e) => setSelectedWard(e.target.value)}
               className="px-3 py-1.5 rounded-lg border border-[#E4E6E2] bg-white text-xs text-[#171918] focus:border-[#315C4C] outline-none"
             >
-              <option value="all">All Wards</option>
-              <option value="Jubilee Hills">Jubilee Hills</option>
-              <option value="Banjara Hills">Banjara Hills</option>
-              <option value="Madhapur">Madhapur</option>
-              <option value="Gachibowli">Gachibowli</option>
-              <option value="Kondapur">Kondapur</option>
-              <option value="Begumpet">Begumpet</option>
+              <option value="all">All Places / Wards</option>
+              {availableWards.map((wardName) => (
+                <option key={wardName} value={wardName}>
+                  {wardName}
+                </option>
+              ))}
             </select>
 
             {/* Category Filter */}

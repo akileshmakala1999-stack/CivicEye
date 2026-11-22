@@ -52,21 +52,21 @@ export const Navbar: React.FC = () => {
 
   return (
     <header
-      className={`sticky top-0 z-50 w-full transition-all duration-300 ${
+      className={`sticky top-0 z-50 w-full max-w-full overflow-x-hidden transition-all duration-300 ${
         scrolled
           ? 'bg-[#F5F5F2]/95 backdrop-blur-md border-b border-[#E4E6E2] shadow-[0_2px_12px_rgba(23,25,24,0.03)]'
           : 'bg-[#F5F5F2] border-b border-transparent'
       }`}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-18 sm:h-20">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+        <div className="flex items-center justify-between h-18 sm:h-20 min-w-0">
           {/* Left: CivicEye Logo & Wordmark */}
-          <div className="flex items-center">
+          <div className="flex items-center flex-shrink-0">
             <Logo size="md" linkToHome={!isLandingPage} />
           </div>
 
           {/* Center Navigation Links (Reference: Platform v | How It Works | Intelligence | Transparency) */}
-          <nav className="hidden md:flex items-center gap-7 lg:gap-9" aria-label="Main Navigation">
+          <nav className="hidden lg:flex items-center gap-6 lg:gap-8" aria-label="Main Navigation">
             {/* Platform Dropdown */}
             <div className="relative" ref={dropdownRef}>
               <button
@@ -150,7 +150,7 @@ export const Navbar: React.FC = () => {
           </nav>
 
           {/* Right Action Buttons */}
-          <div className="hidden sm:flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-3 flex-shrink-0">
             {isAuthenticated ? (
               <div className="flex items-center gap-2.5">
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#E8EAE5] border border-[#E4E6E2] text-xs font-semibold text-[#171918]">
@@ -192,7 +192,7 @@ export const Navbar: React.FC = () => {
           </div>
 
           {/* Mobile Menu Toggle Button */}
-          <div className="flex md:hidden items-center gap-2">
+          <div className="flex lg:hidden items-center gap-2">
             <Link
               to="/dashboard"
               className="px-3.5 py-1.5 text-xs font-semibold text-white bg-[#315C4C] rounded-full shadow-sm"
@@ -213,7 +213,7 @@ export const Navbar: React.FC = () => {
 
       {/* Mobile Menu Overlay Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-b border-[#E4E6E2] bg-[#F5F5F2] px-4 pt-3 pb-6 space-y-4 animate-in slide-in-from-top-4 duration-200">
+        <div className="lg:hidden border-b border-[#E4E6E2] bg-[#F5F5F2] px-4 pt-3 pb-6 space-y-4 animate-in slide-in-from-top-4 duration-200 max-w-full overflow-hidden">
           <div className="flex flex-col space-y-1">
             <Link
               to="/how-it-works"
@@ -270,6 +270,7 @@ export const Navbar: React.FC = () => {
               <Link
                 key={item.to}
                 to={item.to}
+                onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-[#171918] rounded-lg hover:bg-white transition-colors"
               >
                 <item.icon size={15} className="text-[#315C4C]" />

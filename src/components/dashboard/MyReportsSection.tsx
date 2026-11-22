@@ -77,11 +77,12 @@ export const MyReportsSection: React.FC<MyReportsSectionProps> = ({
         return true;
       })
       .sort((a, b) => {
-        if (sortBy === 'newest') {
-          return b.id.localeCompare(a.id);
-        } else {
-          return a.id.localeCompare(b.id);
+        const timeA = new Date(a.createdAt || 0).getTime() || 0;
+        const timeB = new Date(b.createdAt || 0).getTime() || 0;
+        if (timeA !== timeB) {
+          return sortBy === 'newest' ? timeB - timeA : timeA - timeB;
         }
+        return sortBy === 'newest' ? b.id.localeCompare(a.id) : a.id.localeCompare(b.id);
       });
   }, [reports, searchQuery, selectedStatus, selectedCategory, sortBy]);
 

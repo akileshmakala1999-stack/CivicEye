@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge } from '../components/common/Badge';
+import { communityValidationService } from '../services/communityValidationService';
+import { operationsService } from '../services/operationsService';
 import {
   Users,
   Award,
@@ -114,6 +116,21 @@ export const CommunityNetworkPage: React.FC = () => {
 
   const handleVoteRepair = (id: string, vote: 'verified' | 'disputed') => {
     setVotedRepairs((prev) => ({ ...prev, [id]: vote }));
+    if (vote === 'verified') {
+      communityValidationService.verifyResolutionSatisfactory(id, 'usr-aditya', 'Aditya (Citizen Guardian)');
+    } else {
+      communityValidationService.challengeResolution({
+        reportId: id,
+        userName: 'Aditya (Citizen Guardian)',
+        reason: 'Citizen community audit identified recurring defect requiring municipal re-inspection.',
+      });
+      operationsService.handleCitizenResolutionChallenge({
+        reportId: id,
+        citizenName: 'Aditya (Citizen Guardian)',
+        citizenId: 'usr-aditya',
+        reason: 'Citizen community audit identified recurring defect requiring municipal re-inspection.',
+      });
+    }
   };
 
   return (

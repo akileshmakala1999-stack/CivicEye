@@ -5,6 +5,13 @@ import { HYDERABAD_NEIGHBORHOODS } from '../../data/dashboardMockData';
 import { NotificationDropdown } from './NotificationDropdown';
 import { MapPin, Navigation, Bell, Shield, ChevronDown, AlertCircle, Menu, LogOut } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import {
+  INDIA_STATES,
+  getAllIndianStates,
+  getPlacesForState,
+  reverseGeocodeLocation,
+  IndiaPlace,
+} from '../../config/indiaLocations';
 
 interface DashboardHeaderProps {
   currentArea: HyderabadNeighborhood;
@@ -39,6 +46,66 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   const navigate = useNavigate();
   const { user, role, signOut } = useAuth();
 
+  const allStates = getAllIndianStates();
+
+  const [selectedState, setSelectedState] = useState<string>(() => {
+    for (const st of INDIA_STATES) {
+      if (
+        st.places.some(
+          (p) =>
+            p.name.toLowerCase() === currentArea.toLowerCase() ||
+            currentArea.toLowerCase().includes(p.name.toLowerCase())
+        )
+      ) {
+        return st.name;
+      }
+    }
+    return 'Telangana';
+  });
+
+  const [availablePlaces, setAvailablePlaces] = useState<IndiaPlace[]>(() => {
+    return getPlacesForState(selectedState || 'Telangana');
+  });
+
+  // Sync available places when currentArea changes
+  useEffect(() => {
+    for (const st of INDIA_STATES) {
+      if (
+        st.places.some(
+          (p) =>
+            p.name.toLowerCase() === currentArea.toLowerCase() ||
+            currentArea.toLowerCase().includes(p.name.toLowerCase())
+        )
+      ) {
+        if (st.name !== selectedState) {
+          setSelectedState(st.name);
+          setAvailablePlaces(getPlacesForState(st.name));
+        }
+        break;
+      }
+    }
+  }, [currentArea]);
+
+  const handleStateChange = (stateName: string) => {
+    setSelectedState(stateName);
+    const places = getPlacesForState(stateName);
+    setAvailablePlaces(places);
+    if (places.length > 0) {
+      onAreaChange(places[0].name as HyderabadNeighborhood);
+      setLocationNotice(`Active State: ${stateName} • Showing ${places.length} sectors`);
+      setTimeout(() => setLocationNotice(null), 3500);
+    }
+  };
+
+  const handleAreaSelect = (value: string) => {
+    if (value.startsWith('STATE_SWITCH:')) {
+      const targetState = value.replace('STATE_SWITCH:', '');
+      handleStateChange(targetState);
+      return;
+    }
+    onAreaChange(value as HyderabadNeighborhood);
+  };
+
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Aditya';
   const displayRole = user?.user_metadata?.title || (role === 'authority' ? 'Municipal Officer' : 'Citizen Guardian');
   const initials = displayName
@@ -68,7 +135,8 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const currentAreaInfo = HYDERABAD_NEIGHBORHOODS.find((a) => a.id === currentArea) || HYDERABAD_NEIGHBORHOODS[0];
+  const currentAreaInfo = HYDERABAD_NEIGHBORHOODS.find((a) => a.id === currentArea);
+  const wardDisplay = currentAreaInfo ? currentAreaInfo.ward : `${selectedState} • ${currentArea}`;
 
   const handleDetectLocation = () => {
     setDetectingLocation(true);
@@ -82,29 +150,41 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
     }
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setDetectingLocation(false);
-        const { latitude } = position.coords;
-        // Map rough coordinates to Hyderabad zones if nearby, otherwise keep active area
-        if (latitude > 17.43) {
-          onAreaChange('Madhapur');
-          setLocationNotice('Approximate location resolved: Hitech Corridor (Madhapur)');
-        } else {
-          onAreaChange('Jubilee Hills');
-          setLocationNotice('Approximate location resolved: Central West Zone (Jubilee Hills)');
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const resolved = await reverseGeocodeLocation(latitude, longitude);
+          setSelectedState(resolved.state);
+          const places = getPlacesForState(resolved.state);
+          setAvailablePlaces(places);
+
+          const match = places.find(
+            (p) =>
+              p.name.toLowerCase() === resolved.locality.toLowerCase() ||
+              resolved.locality.toLowerCase().includes(p.name.toLowerCase()) ||
+              p.name.toLowerCase().includes(resolved.city.toLowerCase())
+          );
+
+          const chosenPlace = match ? match.name : (places[0]?.name || resolved.locality);
+          onAreaChange(chosenPlace as HyderabadNeighborhood);
+          setLocationNotice(`📍 Detected GPS: ${chosenPlace}, ${resolved.state} (${resolved.city})`);
+        } catch (_err) {
+          setLocationNotice('Unable to acquire accurate GPS fix. Defaulting to selected ward.');
+        } finally {
+          setDetectingLocation(false);
+          setTimeout(() => setLocationNotice(null), 4500);
         }
-        setTimeout(() => setLocationNotice(null), 4000);
       },
       (error) => {
         setDetectingLocation(false);
         if (error.code === error.PERMISSION_DENIED) {
-          setLocationNotice('Location permission not granted. Maintaining selected neighborhood.');
+          setLocationNotice('Location permission not granted. Maintaining selected sector.');
         } else {
-          setLocationNotice('Unable to acquire accurate fix. Defaulting to selected ward.');
+          setLocationNotice('Unable to acquire accurate fix. Maintaining selected sector.');
         }
         setTimeout(() => setLocationNotice(null), 4000);
       },
-      { timeout: 6000 }
+      { timeout: 8000, enableHighAccuracy: true }
     );
   };
 
@@ -116,7 +196,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
           <span className="w-1.5 h-1.5 rounded-full bg-[#315C4C]" />
           <span className="text-[#315C4C] font-semibold">CIVICSPACE V2.4</span>
           <span>•</span>
-          <span>{currentAreaInfo.ward}</span>
+          <span>{wardDisplay}</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -155,9 +235,33 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             </div>
           </div>
 
-          {/* Controls: Area Selector, GPS Button, Notifications, Avatar */}
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Area Selector Dropdown */}
+          {/* Controls: State Selector, Sector Selector, GPS Button, Notifications, Avatar */}
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+            {/* State / UT Selector */}
+            <div className="relative">
+              <div className="flex items-center bg-[#F5F5F2] border border-[#E4E6E2] rounded-lg px-3 py-2 text-xs hover:border-[#737773] transition-colors focus-within:ring-2 focus-within:ring-[#315C4C]">
+                <div className="flex flex-col text-left mr-2">
+                  <span className="text-[10px] font-mono text-[#737773] uppercase leading-none mb-0.5">
+                    State / UT
+                  </span>
+                  <select
+                    value={selectedState}
+                    onChange={(e) => handleStateChange(e.target.value)}
+                    className="bg-transparent font-semibold text-[#171918] focus:outline-none cursor-pointer pr-4 text-xs sm:text-sm max-w-[130px] sm:max-w-[160px] truncate"
+                    aria-label="Select Indian State or Union Territory"
+                  >
+                    {allStates.map((st) => (
+                      <option key={st} value={st}>
+                        {st}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <ChevronDown size={14} className="text-[#737773] pointer-events-none -ml-3" />
+              </div>
+            </div>
+
+            {/* Active Sector Selector Dropdown */}
             <div className="relative">
               <div className="flex items-center bg-[#F5F5F2] border border-[#E4E6E2] rounded-lg px-3 py-2 text-xs hover:border-[#737773] transition-colors focus-within:ring-2 focus-within:ring-[#315C4C]">
                 <MapPin size={14} className="text-[#315C4C] mr-2 flex-shrink-0" />
@@ -167,14 +271,26 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                   </span>
                   <select
                     value={currentArea}
-                    onChange={(e) => onAreaChange(e.target.value as HyderabadNeighborhood)}
-                    className="bg-transparent font-semibold text-[#171918] focus:outline-none cursor-pointer pr-4 text-xs sm:text-sm"
+                    onChange={(e) => handleAreaSelect(e.target.value)}
+                    className="bg-transparent font-semibold text-[#171918] focus:outline-none cursor-pointer pr-4 text-xs sm:text-sm max-w-[140px] sm:max-w-[180px] truncate"
+                    aria-label="Select Active Sector or Place"
                   >
-                    {HYDERABAD_NEIGHBORHOODS.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label}
-                      </option>
-                    ))}
+                    <optgroup label={`${selectedState} Sectors (${availablePlaces.length})`}>
+                      {availablePlaces.map((item) => (
+                        <option key={item.name} value={item.name}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="── Switch State / UT ──">
+                      {allStates
+                        .filter((st) => st !== selectedState)
+                        .map((st) => (
+                          <option key={st} value={`STATE_SWITCH:${st}`}>
+                            ➡️ Switch to {st}
+                          </option>
+                        ))}
+                    </optgroup>
                   </select>
                 </div>
                 <ChevronDown size={14} className="text-[#737773] pointer-events-none -ml-3" />

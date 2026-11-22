@@ -64,6 +64,8 @@ export interface WorkOrder {
   slaDeadlineTimestamp: number;
   location: string;
   neighborhood: HyderabadNeighborhood;
+  state?: string;
+  city?: string;
   createdTimestamp: string;
   createdAt: number;
   assignedTimestamp?: string;
@@ -75,6 +77,7 @@ export interface WorkOrder {
   reworkNotes?: string;
   cancellationReason?: string;
   progressNotes: WorkOrderProgressNote[];
+  version?: number;
 }
 
 export interface OperationsAuditLog {
@@ -166,6 +169,20 @@ export interface CommunityValidationRecord {
   createdAt: number;
   note?: string;
   evidencePhotoUrl?: string;
+  idempotencyKey?: string;
+}
+
+export type ValidationRetrievalState = 'loaded' | 'loading' | 'failed' | 'uninitialized';
+
+export interface IdempotentOperationRecord {
+  idempotencyKey: string;
+  userId: string;
+  reportId: string;
+  operationType: string;
+  action?: CommunityValidationAction;
+  payloadHash?: string;
+  responseData: Record<string, unknown>;
+  createdAt: number;
 }
 
 export interface AdditionalEvidenceRecord {
@@ -220,7 +237,14 @@ export type IssueCategory =
   | 'Water Supply'
   | 'Other';
 
-export type HyderabadNeighborhood = 'Jubilee Hills' | 'Banjara Hills' | 'Madhapur' | 'Gachibowli' | 'Kondapur' | 'Begumpet';
+export type HyderabadNeighborhood =
+  | 'Jubilee Hills'
+  | 'Banjara Hills'
+  | 'Madhapur'
+  | 'Gachibowli'
+  | 'Kondapur'
+  | 'Begumpet'
+  | (string & {});
 
 export interface CivicIssue {
   id: string;
@@ -268,6 +292,8 @@ export interface DashboardReport {
   reportTimestamp: string;
   location: string;
   neighborhood: HyderabadNeighborhood;
+  state?: string;
+  city?: string;
   severity: IssueSeverity;
   status: DashboardReportStatus;
   confirmationsCount: number;
@@ -286,10 +312,13 @@ export interface DashboardReport {
   gettingWorseCount?: number;
   appearsFixedCount?: number;
   incorrectReportCount?: number;
+  legacyUnverifiedCount?: number;
   resolutionStatus?: ResolutionVerificationInfo;
   additionalEvidence?: AdditionalEvidenceRecord[];
   userValidationAction?: CommunityValidationAction | null;
   createdAt?: string;
+  updatedAt?: string;
+  version?: number;
   riskScore?: number;
   priorityScore?: number;
   isRecurring?: boolean;
@@ -409,6 +438,8 @@ export interface RecurringProblem {
   id: string;
   location: string;
   neighborhood: HyderabadNeighborhood;
+  state?: string;
+  city?: string;
   category: IssueCategory;
   occurrenceCount: number;
   firstReportDate: string;
@@ -426,6 +457,8 @@ export interface EarlyWarningSignal {
   title: string;
   location: string;
   neighborhood: HyderabadNeighborhood;
+  state?: string;
+  city?: string;
   category: IssueCategory;
   level: EarlyWarningRiskLevel;
   incidentCount: number;

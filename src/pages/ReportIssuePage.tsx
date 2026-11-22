@@ -9,6 +9,13 @@ import {
 import { reportService, SimilarityCandidate } from '../services/reportService';
 import { isSupabaseConfigured } from '../lib/supabase';
 import {
+  getAllIndianStates,
+  getPlacesForState,
+  findNearestPlaceInIndia,
+  reverseGeocodeLocation,
+  IndiaPlace,
+} from '../config/indiaLocations';
+import {
   MapPin,
   AlertTriangle,
   Upload,
@@ -179,8 +186,10 @@ export const ReportIssuePage: React.FC = () => {
   const [title, setTitle] = useState('Asphalt crater / road depression');
   const [description, setDescription] = useState('');
   const [severity, setSeverity] = useState<IssueSeverity>('medium');
-  const [neighborhood, setNeighborhood] = useState<HyderabadNeighborhood>('Jubilee Hills');
-  const [locationText, setLocationText] = useState('Road No. 36, Near Peddamma Temple Metro, Jubilee Hills');
+  const [selectedState, setSelectedState] = useState<string>('Telangana');
+  const [availablePlaces, setAvailablePlaces] = useState<IndiaPlace[]>(() => getPlacesForState('Telangana'));
+  const [neighborhood, setNeighborhood] = useState<HyderabadNeighborhood>('Hyderabad - Jubilee Hills');
+  const [locationText, setLocationText] = useState('Road No. 36, Near Peddamma Temple Metro, Jubilee Hills, Hyderabad');
   const [coordinates, setCoordinates] = useState<{ lat: number; lng: number }>({
     lat: 17.4325,
     lng: 78.4071,
@@ -230,39 +239,90 @@ export const ReportIssuePage: React.FC = () => {
     }
   }, [selectedCategory, locationText, coordinates]);
 
-  // Request GPS Location
+  // State selection change handler - automatically updates all places in that state
+  const handleStateChange = (stateName: string) => {
+    setSelectedState(stateName);
+    const places = getPlacesForState(stateName);
+    setAvailablePlaces(places);
+    if (places.length > 0) {
+      const first = places[0];
+      setNeighborhood(first.name);
+      setLocationText(`${first.name}, ${stateName}`);
+      setCoordinates({ lat: first.lat, lng: first.lng });
+      setGpsMessage(`✓ Showing ${places.length} places and districts in ${stateName}.`);
+    }
+  };
+
+  // Place selection change handler - updates coordinates & location
+  const handlePlaceChange = (placeName: string) => {
+    setNeighborhood(placeName);
+    const place = availablePlaces.find((p) => p.name === placeName);
+    if (place) {
+      setCoordinates({ lat: place.lat, lng: place.lng });
+      setLocationText(`${place.name}, ${selectedState}`);
+      setGpsMessage(`Location pinned: ${place.name}, ${selectedState}`);
+    }
+  };
+
+  // Request GPS Location with India-wide auto-detection
   const handleRequestGPS = () => {
     if (!navigator.geolocation) {
-      setGpsMessage('Geolocation is not supported by your browser. Please select location manually.');
+      setGpsMessage('Geolocation is not supported by your browser. Please select your State and Place manually.');
       return;
     }
 
     setGpsLoading(true);
-    setGpsMessage(null);
+    setGpsMessage('Locating device via GPS satellites & cellular networks across India...');
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setGpsLoading(false);
+      async (position) => {
         const lat = parseFloat(position.coords.latitude.toFixed(5));
         const lng = parseFloat(position.coords.longitude.toFixed(5));
         setCoordinates({ lat, lng });
 
-        // Map into Hyderabad relative grid percent
-        const xPercent = Math.min(85, Math.max(15, 50 + (lng - 78.4) * 200));
-        const yPercent = Math.min(85, Math.max(15, 50 - (lat - 17.43) * 200));
+        // Map into 2D SVG canvas percentages
+        const xPercent = Math.min(85, Math.max(15, 50 + (lng - 78.4) * 20));
+        const yPercent = Math.min(85, Math.max(15, 50 - (lat - 17.43) * 20));
         setMarkerPercent({ x: Math.round(xPercent), y: Math.round(yPercent) });
 
-        setGpsMessage(`✓ GPS coordinates locked: ${lat}°N, ${lng}°E (Accuracy ±${Math.round(position.coords.accuracy)}m)`);
+        try {
+          const geo = await reverseGeocodeLocation(lat, lng);
+          setGpsLoading(false);
+          setSelectedState(geo.state);
+          const places = getPlacesForState(geo.state);
+          setAvailablePlaces(places);
+
+          // Find closest matching place
+          const matched = places.find(
+            (p) =>
+              p.name.toLowerCase().includes(geo.city.toLowerCase()) ||
+              geo.city.toLowerCase().includes(p.name.toLowerCase())
+          );
+          const placeToSet = matched ? matched.name : (places[0]?.name || geo.city || 'Central District');
+          setNeighborhood(placeToSet);
+          setLocationText(geo.fullAddress || `${geo.locality}, ${geo.city}, ${geo.state}`);
+          setGpsMessage(
+            `✓ Location Auto-Detected: ${geo.locality || geo.city}, ${geo.state} (${lat}°N, ${lng}°E · ±${Math.round(position.coords.accuracy)}m)`
+          );
+        } catch (_e) {
+          setGpsLoading(false);
+          const nearest = findNearestPlaceInIndia(lat, lng);
+          setSelectedState(nearest.state.name);
+          setAvailablePlaces(nearest.state.places);
+          setNeighborhood(nearest.place.name);
+          setLocationText(`${nearest.place.name}, ${nearest.state.name}`);
+          setGpsMessage(`✓ GPS locked: Near ${nearest.place.name}, ${nearest.state.name} (${lat}°N, ${lng}°E)`);
+        }
       },
       (error) => {
         setGpsLoading(false);
         if (error.code === error.PERMISSION_DENIED) {
-          setGpsMessage('GPS permission denied. You can select your location on the map or type it below.');
+          setGpsMessage('GPS permission denied. You can select your State and Place from the dropdowns below.');
         } else {
-          setGpsMessage('Unable to retrieve GPS signal. Please use manual map or address input.');
+          setGpsMessage('Unable to retrieve GPS signal. Please select your State and Place below.');
         }
       },
-      { timeout: 8000, enableHighAccuracy: true }
+      { timeout: 10000, enableHighAccuracy: true }
     );
   };
 
@@ -356,6 +416,8 @@ export const ReportIssuePage: React.FC = () => {
         severity,
         locationText,
         neighborhood,
+        state: selectedState,
+        city: neighborhood,
         latitude: coordinates.lat,
         longitude: coordinates.lng,
         imageFiles,
@@ -762,9 +824,9 @@ export const ReportIssuePage: React.FC = () => {
             <div className="flex items-center justify-between pb-3 border-b border-[#E4E6E2]">
               <div>
                 <span className="font-mono text-[10px] uppercase text-[#315C4C] font-semibold block">Step 05</span>
-                <h3 className="text-base font-bold text-[#171918]">Location & Ward Pin</h3>
+                <h3 className="text-base font-bold text-[#171918]">Location, State & Geographic Pin</h3>
               </div>
-              <span className="text-xs font-mono text-[#737773]">GPS or Manual</span>
+              <span className="text-xs font-mono text-[#737773]">India-Wide • Auto GPS or Select</span>
             </div>
 
             {/* GPS Trigger & Status */}
@@ -772,9 +834,9 @@ export const ReportIssuePage: React.FC = () => {
               <div className="flex items-start gap-2.5">
                 <Navigation size={18} className="text-[#315C4C] mt-0.5 flex-shrink-0" />
                 <div>
-                  <span className="text-xs font-semibold text-[#171918] block">Use Device GPS Geolocation</span>
+                  <span className="text-xs font-semibold text-[#171918] block">Auto-Detect Device Location (GPS)</span>
                   <span className="text-[11px] text-[#737773]">
-                    Requests hardware coordinates from your browser without forced permissions.
+                    Automatically identifies your State, District/City, and exact locality anywhere in India.
                   </span>
                 </div>
               </div>
@@ -786,7 +848,7 @@ export const ReportIssuePage: React.FC = () => {
                 className="px-3.5 py-1.5 rounded-md bg-[#315C4C] hover:bg-[#26483B] text-white text-xs font-medium flex items-center justify-center gap-1.5 transition-colors disabled:opacity-60 flex-shrink-0"
               >
                 <MapPin size={13} />
-                <span>{gpsLoading ? 'Acquiring GPS...' : 'Acquire Current GPS'}</span>
+                <span>{gpsLoading ? 'Detecting Location...' : 'Auto-Detect My Location'}</span>
               </button>
             </div>
 
@@ -796,11 +858,106 @@ export const ReportIssuePage: React.FC = () => {
               </p>
             )}
 
+            {/* State & City / Place Dropdowns */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="text-xs font-semibold text-[#171918] block mb-1">
+                  1. Select State / Union Territory
+                </label>
+                <select
+                  value={selectedState}
+                  onChange={(e) => handleStateChange(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-[#E4E6E2] bg-white text-xs text-[#171918] focus:border-[#315C4C] outline-none font-medium"
+                >
+                  {getAllIndianStates().map((stateName) => (
+                    <option key={stateName} value={stateName}>
+                      {stateName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-[#171918] block mb-1">
+                  2. Select City / Place in {selectedState} ({availablePlaces.length} places)
+                </label>
+                <select
+                  value={neighborhood}
+                  onChange={(e) => handlePlaceChange(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-[#E4E6E2] bg-white text-xs text-[#171918] focus:border-[#315C4C] outline-none font-medium"
+                >
+                  {availablePlaces.map((place) => (
+                    <option key={place.name} value={place.name}>
+                      {place.name} {place.district ? `(${place.district})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Street Address or Landmark Details */}
+            <div>
+              <label className="text-xs font-semibold text-[#171918] block mb-1">
+                3. Street Address / Locality / Landmark Details
+              </label>
+              <input
+                type="text"
+                value={locationText}
+                onChange={(e) => setLocationText(e.target.value)}
+                placeholder="e.g. Near Metro Station / Main Market Road / Cross Junction..."
+                className="w-full px-3 py-2 rounded-lg border border-[#E4E6E2] bg-white text-xs text-[#171918] focus:border-[#315C4C] outline-none"
+                required
+              />
+            </div>
+
+            {/* Quick Place Presets for Current State */}
+            <div>
+              <span className="text-[11px] font-mono text-[#737773] block mb-2">
+                Quick Places in {selectedState}:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {availablePlaces.slice(0, 10).map((place, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handlePlaceChange(place.name)}
+                    className={`px-2.5 py-1 rounded text-xs border transition-colors ${
+                      neighborhood === place.name
+                        ? 'bg-[#315C4C] text-white border-[#315C4C] font-semibold'
+                        : 'border-[#E4E6E2] bg-white hover:bg-[#F5F5F2] hover:border-[#315C4C] text-[#171918]'
+                    }`}
+                  >
+                    {place.name}
+                  </button>
+                ))}
+              </div>
+
+              {selectedState === 'Telangana' && (
+                <div className="pt-2.5 mt-2.5 border-t border-[#E4E6E2]/60">
+                  <span className="text-[10px] font-mono text-[#737773] block mb-1.5 uppercase">
+                    Hyderabad Ward Landmarks:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {HYDERABAD_LANDMARKS.map((landmark, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleSelectLandmark(landmark)}
+                        className="px-2 py-0.5 rounded text-[11px] border border-[#E4E6E2] bg-white hover:bg-[#F5F5F2] hover:border-[#315C4C] transition-colors text-[#171918]"
+                      >
+                        {landmark.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Interactive Vector Map Canvas for Location Picker */}
             <div>
               <div className="flex items-center justify-between mb-1.5 text-xs">
                 <span className="font-semibold text-[#171918] flex items-center gap-1">
-                  <span>Pinpoint on Ward Grid</span>
+                  <span>Geographic Location Canvas</span>
                   <span className="text-[10px] font-mono text-[#737773]">(Click anywhere to place pin)</span>
                 </span>
                 <span className="font-mono text-[11px] text-[#315C4C]">
@@ -852,56 +1009,6 @@ export const ReportIssuePage: React.FC = () => {
                 <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-white/90 border border-[#E4E6E2] text-[10px] font-mono text-[#737773]">
                   CLICK GRID TO SET COORDINATES
                 </div>
-              </div>
-            </div>
-
-            {/* Quick Landmark Presets */}
-            <div>
-              <span className="text-[11px] font-mono text-[#737773] block mb-2">Or Choose a Hyderabad Ward Landmark:</span>
-              <div className="flex flex-wrap gap-1.5">
-                {HYDERABAD_LANDMARKS.map((landmark, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => handleSelectLandmark(landmark)}
-                    className="px-2.5 py-1 rounded text-xs border border-[#E4E6E2] bg-white hover:bg-[#F5F5F2] hover:border-[#315C4C] transition-colors text-[#171918]"
-                  >
-                    {landmark.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Address Input & Neighborhood */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-              <div>
-                <label className="text-xs font-semibold text-[#171918] block mb-1">
-                  Ward Neighborhood
-                </label>
-                <select
-                  value={neighborhood}
-                  onChange={(e) => setNeighborhood(e.target.value as HyderabadNeighborhood)}
-                  className="w-full px-3 py-2 rounded-lg border border-[#E4E6E2] bg-white text-xs text-[#171918] focus:border-[#315C4C] outline-none"
-                >
-                  <option value="Jubilee Hills">Jubilee Hills</option>
-                  <option value="Banjara Hills">Banjara Hills</option>
-                  <option value="Madhapur">Madhapur</option>
-                  <option value="Gachibowli">Gachibowli</option>
-                </select>
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="text-xs font-semibold text-[#171918] block mb-1">
-                  Street Address or Landmark Details
-                </label>
-                <input
-                  type="text"
-                  value={locationText}
-                  onChange={(e) => setLocationText(e.target.value)}
-                  placeholder="e.g. Road No. 36, opposite Metro Pillar 1420..."
-                  className="w-full px-3 py-2 rounded-lg border border-[#E4E6E2] bg-white text-xs text-[#171918] focus:border-[#315C4C] outline-none"
-                  required
-                />
               </div>
             </div>
           </div>

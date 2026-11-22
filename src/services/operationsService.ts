@@ -12,6 +12,7 @@ import {
 import { reportService } from './reportService';
 import { communityValidationService } from './communityValidationService';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { authService } from './authService';
 
 const WORK_ORDERS_STORAGE_KEY = 'civiceye_operations_work_orders';
 const AUDIT_LOGS_STORAGE_KEY = 'civiceye_operations_audit_logs';
@@ -366,6 +367,36 @@ class OperationsService {
 
   constructor() {
     this.loadFromStorage();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('civiceye_resolution_challenged', (e: Event) => {
+        const detail = (e as CustomEvent).detail;
+        if (detail?.reportId) {
+          this.handleCitizenResolutionChallenge(detail);
+        }
+      });
+      window.addEventListener('civiceye_issue_worsening', (e: Event) => {
+        const detail = (e as CustomEvent).detail;
+        if (detail?.reportId) {
+          const wo = this.workOrders.find((w) => w.reportId === detail.reportId);
+          if (wo && wo.priority !== 'critical') {
+            const oldPriority = wo.priority;
+            wo.priority = wo.priority === 'low' ? 'medium' : 'high';
+            this.recordAuditLog({
+              actorId: detail.userName || 'citizen',
+              actorName: detail.userName || 'Community Citizen',
+              actorRole: 'citizen',
+              action: 'report_reclassified',
+              entityType: 'work_order',
+              entityId: wo.id,
+              previousState: oldPriority,
+              newState: wo.priority,
+              reason: `Escalated due to citizen worsening report: ${detail.note || 'Hazard accelerating.'}`,
+            });
+            this.saveToStorage();
+          }
+        }
+      });
+    }
   }
 
   private loadFromStorage() {
@@ -403,10 +434,21 @@ class OperationsService {
 
   // 1. Role & Identity Management
   getActiveRole(): OperationalRole {
+    const authSession = authService.getCurrentSessionSync();
+    if (authSession?.user?.user_metadata?.role === 'citizen') {
+      return 'citizen';
+    }
     return this.activeRole;
   }
 
   setActiveRole(role: OperationalRole): void {
+    const authSession = authService.getCurrentSessionSync();
+    if (authSession?.user?.user_metadata?.role === 'citizen' && role !== 'citizen') {
+      console.warn('[Security] Unauthorized attempt to elevate role while logged in as citizen. Fails closed.');
+      this.activeRole = 'citizen';
+      this.saveToStorage();
+      return;
+    }
     this.activeRole = role;
     this.saveToStorage();
   }
@@ -431,7 +473,19 @@ class OperationsService {
     title: string;
     department: string;
   } {
-    if (this.activeRole === 'admin') {
+    const authSession = authService.getCurrentSessionSync();
+    if (authSession?.user?.user_metadata?.role === 'citizen') {
+      return {
+        id: authSession.user.id,
+        name: authSession.user.user_metadata.full_name || 'Citizen User',
+        role: 'citizen',
+        title: authSession.user.user_metadata.title || 'Community Citizen',
+        department: 'Citizen Public',
+      };
+    }
+
+    const role = this.getActiveRole();
+    if (role === 'admin') {
       return {
         id: 'usr-admin-director',
         name: 'Director P. Seshadri, IAS',
@@ -440,7 +494,7 @@ class OperationsService {
         department: 'GHMC Central Administration',
       };
     }
-    if (this.activeRole === 'supervisor') {
+    if (role === 'supervisor') {
       const sup = OPERATIONAL_STAFF.find((s) => s.role === 'supervisor') || OPERATIONAL_STAFF[0];
       return {
         id: sup.id,
@@ -450,7 +504,7 @@ class OperationsService {
         department: sup.departmentName,
       };
     }
-    if (this.activeRole === 'reviewer') {
+    if (role === 'reviewer') {
       const rev = OPERATIONAL_STAFF.find((s) => s.role === 'reviewer') || OPERATIONAL_STAFF[0];
       return {
         id: rev.id,
@@ -460,7 +514,7 @@ class OperationsService {
         department: rev.departmentName,
       };
     }
-    if (this.activeRole === 'staff') {
+    if (role === 'staff') {
       const staff = OPERATIONAL_STAFF.find((s) => s.id === this.activeStaffId) || OPERATIONAL_STAFF[0];
       return {
         id: staff.id,
@@ -480,7 +534,13 @@ class OperationsService {
   }
 
   canPerform(action: string): boolean {
-    const role = this.activeRole;
+    const authSession = authService.getCurrentSessionSync();
+    // Fail-closed authorization: Citizen sessions can never perform operational mutations
+    if (authSession?.user?.user_metadata?.role === 'citizen') {
+      return false;
+    }
+
+    const role = this.getActiveRole();
     if (role === 'admin') return true;
 
     switch (action) {
@@ -521,6 +581,9 @@ class OperationsService {
     targetHours?: number;
     assignmentNotes?: string;
   }): Promise<{ success: boolean; workOrder: WorkOrder; message: string }> {
+    if (!this.canPerform('approve_report')) {
+      throw new Error('Unauthorized: Operator lacks permission to approve reports.');
+    }
     const operator = this.getCurrentOperator();
     const dept = DEPARTMENTS.find((d) => d.id === params.departmentId) || DEPARTMENTS[0];
     const defaultStaff = OPERATIONAL_STAFF.find((s) => s.departmentId === dept.id);
@@ -540,33 +603,15 @@ class OperationsService {
     const nowTime = Date.now();
     const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    // Update report in reportService
-    const updatedTimeline = [...report.timeline];
-    updatedTimeline.push({
-      step: 'Assigned',
-      label: 'Department Assigned',
-      timestamp: nowStr,
-      completed: true,
-      current: true,
-      detail: `Approved by ${operator.name}. Dispatched to ${dept.name} (${staff ? staff.name : 'Pending Team Slot'}). Note: ${params.assignmentNotes || 'Standard dispatch order.'}`,
-    });
-
-    const updatedReport: DashboardReport = {
-      ...report,
-      status: 'Assigned',
-      departmentAssigned: dept.name,
-      handlingOfficer: staff ? staff.name : dept.headOfficer,
-      severity: params.priority || report.severity,
-      timeline: updatedTimeline,
-    };
-
-    reports[reportIndex] = updatedReport;
-    try {
-      localStorage.setItem('civiceye_user_reports', JSON.stringify(reports));
-      window.dispatchEvent(new CustomEvent('civiceye_reports_updated', { detail: reports }));
-    } catch (e) {
-      console.error(e);
-    }
+    // Update report in reportService and persist across all layers
+    await reportService.updateReportStatus(
+      params.reportId,
+      'Assigned',
+      `Approved by ${operator.name}. Dispatched to ${dept.name} (${staff ? staff.name : 'Pending Team Slot'}). Note: ${params.assignmentNotes || 'Standard dispatch order.'}`,
+      dept.name,
+      staff ? staff.name : dept.headOfficer,
+      params.priority || report.severity
+    );
 
     // Check if work order already exists or create new
     let wo = this.workOrders.find((w) => w.reportId === params.reportId);
@@ -598,6 +643,7 @@ class OperationsService {
         createdTimestamp: nowStr,
         createdAt: nowTime,
         assignedTimestamp: nowStr,
+        version: 1,
         progressNotes: [
           {
             id: `pn-${Date.now()}`,
@@ -664,31 +710,21 @@ class OperationsService {
     reason: string;
     rejectionCategory?: string;
   }): Promise<{ success: boolean; message: string }> {
+    if (!this.canPerform('reject_report')) {
+      throw new Error('Unauthorized: Operator lacks permission to reject reports.');
+    }
     const operator = this.getCurrentOperator();
     const reports = await reportService.getAllReports();
     const reportIndex = reports.findIndex((r) => r.id === params.reportId);
 
     if (reportIndex < 0) throw new Error('Report not found');
     const report = reports[reportIndex];
-    const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    const updatedTimeline = [...report.timeline];
-    updatedTimeline.push({
-      step: 'Resolved',
-      label: 'Report Rejected / Closed',
-      timestamp: nowStr,
-      completed: true,
-      current: true,
-      detail: `Administrative review rejection by ${operator.name}. Reason: ${params.reason}`,
-    });
-
-    report.timeline = updatedTimeline;
-    try {
-      localStorage.setItem('civiceye_user_reports', JSON.stringify(reports));
-      window.dispatchEvent(new CustomEvent('civiceye_reports_updated', { detail: reports }));
-    } catch (e) {
-      console.error(e);
-    }
+    await reportService.updateReportStatus(
+      params.reportId,
+      'Resolved',
+      `Administrative review rejection by ${operator.name}. Reason: ${params.reason}`
+    );
 
     this.recordAuditLog({
       actorId: operator.id,
@@ -767,6 +803,7 @@ class OperationsService {
     const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     wo.status = targetStatus;
+    wo.version = (wo.version || 1) + 1;
 
     if (targetStatus === 'Accepted') {
       wo.assignedStaffId = operator.id;
@@ -863,6 +900,9 @@ class OperationsService {
     materialsUsed?: string;
     beforePhotoUrl?: string;
   }): { success: boolean; error?: string } {
+    if (!this.canPerform('submit_completion')) {
+      return { success: false, error: 'Unauthorized: Staff permissions required to submit completion evidence.' };
+    }
     const operator = this.getCurrentOperator();
     const wo = this.workOrders.find((w) => w.id === params.workOrderId);
     if (!wo) return { success: false, error: 'Work order not found.' };
@@ -887,6 +927,9 @@ class OperationsService {
 
   // 5. Supervisor Review Actions
   approveCompletion(workOrderId: string, supervisorNotes?: string): { success: boolean; error?: string } {
+    if (!this.canPerform('approve_completion')) {
+      return { success: false, error: 'Unauthorized: Supervisor permissions required to approve completion.' };
+    }
     const wo = this.workOrders.find((w) => w.id === workOrderId);
     if (!wo) return { success: false, error: 'Work order not found.' };
 
@@ -903,6 +946,9 @@ class OperationsService {
   }
 
   returnForRework(workOrderId: string, reworkNotes: string): { success: boolean; error?: string } {
+    if (!this.canPerform('return_rework')) {
+      return { success: false, error: 'Unauthorized: Supervisor permissions required to return work orders for rework.' };
+    }
     return this.transitionWorkOrderStatus({
       workOrderId,
       newStatus: 'Returned for Rework',
@@ -910,24 +956,10 @@ class OperationsService {
     });
   }
 
-  // Helper: Synchronize with reportService
+  // Helper: Synchronize with reportService and database
   public async syncReportStatus(reportId: string, status: DashboardReport['status'], note: string) {
     try {
-      const reports = await reportService.getAllReports();
-      const rep = reports.find((r) => r.id === reportId);
-      if (rep) {
-        rep.status = status;
-        rep.timeline.push({
-          step: status,
-          label: status === 'In Progress' ? 'Work In Progress' : status,
-          timestamp: 'Just now',
-          completed: true,
-          current: true,
-          detail: note,
-        });
-        localStorage.setItem('civiceye_user_reports', JSON.stringify(reports));
-        window.dispatchEvent(new CustomEvent('civiceye_reports_updated', { detail: reports }));
-      }
+      await reportService.updateReportStatus(reportId, status, note);
     } catch (e) {
       console.warn('Could not sync report status', e);
     }
@@ -1188,6 +1220,33 @@ class OperationsService {
         })
       ).catch((err: unknown) => console.warn('Supabase audit log sync error:', err));
     }
+  }
+
+  /**
+   * Non-destructive removal of work orders for a specific report (used for demo scenario resets)
+   */
+  removeWorkOrderForReport(reportId: string): boolean {
+    const beforeCount = this.workOrders.length;
+    this.workOrders = this.workOrders.filter((w) => w.reportId !== reportId);
+    if (this.workOrders.length !== beforeCount) {
+      this.saveToStorage();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Upsert a work order directly into operations state (used for scenario initialization)
+   */
+  upsertWorkOrder(wo: WorkOrder): WorkOrder {
+    const existingIndex = this.workOrders.findIndex((w) => w.id === wo.id || w.reportId === wo.reportId);
+    if (existingIndex >= 0) {
+      this.workOrders[existingIndex] = { ...this.workOrders[existingIndex], ...wo };
+    } else {
+      this.workOrders.unshift(wo);
+    }
+    this.saveToStorage();
+    return wo;
   }
 }
 

@@ -91,12 +91,23 @@ export const CitizenDashboardPage: React.FC = () => {
     };
     window.addEventListener('civiceye_new_notification', handleNewNotification);
 
+    const handleWatchlistUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<string[]>;
+      if (customEvent.detail) {
+        setFollowedIssueIds(customEvent.detail);
+      } else {
+        setFollowedIssueIds(reportService.getFollowedIssueIds());
+      }
+    };
+    window.addEventListener('civiceye_watchlist_updated', handleWatchlistUpdate);
+
     return () => {
       isMounted = false;
       window.removeEventListener('civiceye_reports_updated', handleUpdate);
       window.removeEventListener('civiceye_community_updated', handleUpdate);
       window.removeEventListener('civiceye_operations_updated', handleUpdate);
       window.removeEventListener('civiceye_new_notification', handleNewNotification);
+      window.removeEventListener('civiceye_watchlist_updated', handleWatchlistUpdate);
     };
   }, []);
   const [nearbyIssues, setNearbyIssues] = useState<NearbyCommunityIssue[]>(INITIAL_NEARBY_ISSUES);
@@ -105,32 +116,14 @@ export const CitizenDashboardPage: React.FC = () => {
   const [selectedReport, setSelectedReport] = useState<DashboardReport | null>(null);
   const [communityImpactCount, setCommunityImpactCount] = useState<number>(48);
 
-  // Feature 1: Watchlist / Followed Issues with localStorage persistence
+  // Feature 1: Watchlist / Followed Issues with unified reportService persistence
   const [followedIssueIds, setFollowedIssueIds] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('civiceye_followed_issues');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Failed to load followed issues from localStorage', e);
-    }
-    // Default seed for demo mode
-    return ['nb-jh-2'];
+    return reportService.getFollowedIssueIds();
   });
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('civiceye_followed_issues', JSON.stringify(followedIssueIds));
-    } catch (e) {
-      console.error('Failed to save followed issues to localStorage', e);
-    }
-  }, [followedIssueIds]);
-
   const handleToggleFollow = (issueId: string) => {
-    setFollowedIssueIds((prev) =>
-      prev.includes(issueId)
-        ? prev.filter((id) => id !== issueId)
-        : [...prev, issueId]
-    );
+    reportService.toggleFollowReport(issueId);
+    setFollowedIssueIds(reportService.getFollowedIssueIds());
   };
 
   // Feature 2: Priority Explanation Modal State

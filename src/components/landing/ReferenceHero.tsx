@@ -48,9 +48,9 @@ export const ReferenceHero: React.FC = () => {
 
             {/* Headline */}
             <motion.div variants={itemVariants}>
-              <h1 className="text-4xl sm:text-5xl lg:text-[52px] xl:text-[60px] font-bold tracking-tight text-[#171918] leading-[1.08]">
+              <h1 className="text-3xl sm:text-4xl lg:text-[52px] xl:text-[60px] font-bold tracking-tight text-[#171918] leading-[1.12] sm:leading-[1.08]">
                 Better cities begin{' '}
-                <span className="block mt-1 sm:mt-1.5 whitespace-nowrap">
+                <span className="block mt-1 sm:mt-1.5 sm:whitespace-nowrap">
                   with <span className="text-[#315C4C]">people who care.</span>
                 </span>
               </h1>
@@ -64,10 +64,10 @@ export const ReferenceHero: React.FC = () => {
             </motion.div>
 
             {/* Action CTA Buttons */}
-            <motion.div variants={itemVariants} className="pt-1 flex flex-wrap items-center gap-3.5">
+            <motion.div variants={itemVariants} className="pt-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-3.5">
               <Link
                 to="/dashboard"
-                className="inline-flex items-center gap-2 px-6 py-3 text-sm sm:text-base font-semibold text-white bg-[#315C4C] hover:bg-[#26483B] rounded-full shadow-[0_4px_14px_rgba(49,92,76,0.25)] hover:shadow-[0_6px_20px_rgba(49,92,76,0.32)] transition-all hover:-translate-y-0.5 active:translate-y-0 group"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm sm:text-base font-semibold text-white bg-[#315C4C] hover:bg-[#26483B] rounded-full shadow-[0_4px_14px_rgba(49,92,76,0.25)] hover:shadow-[0_6px_20px_rgba(49,92,76,0.32)] transition-all hover:-translate-y-0.5 active:translate-y-0 group"
               >
                 <span>Explore CivicEye</span>
                 <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
@@ -75,7 +75,7 @@ export const ReferenceHero: React.FC = () => {
 
               <Link
                 to="/report"
-                className="inline-flex items-center gap-2 px-6 py-3 text-sm sm:text-base font-medium text-[#171918] bg-white hover:bg-[#F9F9F7] border border-[#E4E6E2] rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:border-[#D1D5CB] transition-all hover:-translate-y-0.5 active:translate-y-0"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm sm:text-base font-medium text-[#171918] bg-white hover:bg-[#F9F9F7] border border-[#E4E6E2] rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:border-[#D1D5CB] transition-all hover:-translate-y-0.5 active:translate-y-0"
               >
                 <Megaphone size={16} className="text-[#315C4C]" />
                 <span>Report an Issue</span>

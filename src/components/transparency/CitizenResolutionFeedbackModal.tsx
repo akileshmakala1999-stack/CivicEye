@@ -49,7 +49,7 @@ export const CitizenResolutionFeedbackModal: React.FC<CitizenResolutionFeedbackM
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl max-w-lg w-full border border-[#E4E6E2] shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="px-6 py-4 border-b border-[#E4E6E2] flex items-center justify-between bg-[#F5F5F2]">

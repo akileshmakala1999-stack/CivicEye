@@ -34,6 +34,7 @@ import {
   MAP_PROJECTION_BOUNDS,
   OFFICIAL_MUNICIPAL_BOUNDARY_SPEC,
   isValidGlobalCoordinate,
+  normalizeHyderabadCoordinates,
   isInGeographicBounds,
   isValidCoordinate,
   projectCoordinates,
@@ -59,6 +60,7 @@ export {
   MAP_PROJECTION_BOUNDS,
   OFFICIAL_MUNICIPAL_BOUNDARY_SPEC,
   isValidGlobalCoordinate,
+  normalizeHyderabadCoordinates,
   isInGeographicBounds,
   isValidCoordinate,
   projectCoordinates,
@@ -337,39 +339,36 @@ class DigitalTwinService {
       const hasGps = report.latitude !== undefined && report.longitude !== undefined;
 
       if (hasGps) {
-        if (!isValidGlobalCoordinate(report.latitude, report.longitude)) {
+        // Automatically detect and normalize accidentally inverted lat/lng coordinates
+        const normalized = normalizeHyderabadCoordinates(report.latitude, report.longitude);
+        const effLat = normalized.lat!;
+        const effLng = normalized.lng!;
+
+        if (!isValidGlobalCoordinate(effLat, effLng)) {
           invalidCoords.push(report);
           nonGeo.push(report);
           continue;
         }
 
         // Valid global coordinates: check if within current map viewport
-        if (isInGeographicBounds(report.latitude!, report.longitude!, viewportBounds)) {
-          const coords = projectCoordinates(report.latitude!, report.longitude!, undefined, undefined, viewportBounds);
+        if (isInGeographicBounds(effLat, effLng, viewportBounds)) {
+          const coords = projectCoordinates(effLat, effLng, undefined, undefined, viewportBounds);
           valid.push({
             ...report,
-            effectiveLat: report.latitude!,
-            effectiveLng: report.longitude!,
+            effectiveLat: effLat,
+            effectiveLng: effLng,
             x: coords.x,
             y: coords.y,
             accuracyLevel: 'verified_gps',
           });
         } else {
-          // Valid GPS, but outside current viewport rectangle: PRESERVED in totals!
+          // Valid GPS, but outside current viewport rectangle: preserved in outsideViewportReports!
+          // Not clamped to viewport corners to preserve cartographic fidelity
           outsideViewport.push(report);
-          // If within greater metro area, it can also have a clamped map pin or be listed separately
-          const coords = projectCoordinates(report.latitude!, report.longitude!, undefined, undefined, viewportBounds);
-          valid.push({
-            ...report,
-            effectiveLat: report.latitude!,
-            effectiveLng: report.longitude!,
-            x: coords.x,
-            y: coords.y,
-            accuracyLevel: 'verified_gps',
-          });
+          nonGeo.push(report);
         }
       } else if (report.neighborhood && WARD_CENTROIDS[report.neighborhood]) {
-        // Approximate Ward Centroid Fallback
+        // Approximate Ward Centroid Fallback for reports with missing GPS
         const centroid = WARD_CENTROIDS[report.neighborhood];
         const coords = projectCoordinates(centroid.lat, centroid.lng, undefined, undefined, viewportBounds);
         valid.push({

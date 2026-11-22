@@ -59,6 +59,21 @@ export const METROPOLITAN_COVERAGE_BOUNDS: GeoBounds = {
   isApproximate: true,
 };
 
+/**
+ * Tier E: All-India National Geographic Coverage Bounds
+ * Covers the entire geographic landmass of the Republic of India (~6.0° to 37.5°N, 68.0° to 97.5°E).
+ */
+export const INDIA_COVERAGE_BOUNDS: GeoBounds = {
+  minLat: 6.0,
+  maxLat: 37.5,
+  minLng: 68.0,
+  maxLng: 97.5,
+  label: 'Republic of India National Coverage Area',
+  isApproximate: true,
+};
+
+export const INDIA_GEO_BOUNDS = INDIA_COVERAGE_BOUNDS;
+
 // Backward-compatible alias
 export const GREATER_HYDERABAD_BOUNDS = METROPOLITAN_COVERAGE_BOUNDS;
 
@@ -97,7 +112,6 @@ export const OFFICIAL_MUNICIPAL_BOUNDARY_SPEC: AuthoritativeBoundarySpec = {
 };
 
 /**
- * Mathematical Global Coordinate Validation
  * Checks latitude [-90, 90], longitude [-180, 180], not NaN, and rejects Null Island (0,0).
  */
 export function isValidGlobalCoordinate(lat?: number, lng?: number): boolean {
@@ -105,6 +119,24 @@ export function isValidGlobalCoordinate(lat?: number, lng?: number): boolean {
   if (isNaN(lat) || isNaN(lng)) return false;
   if (lat === 0 && lng === 0) return false; // Rejects Null Island GPS sensor fault
   return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
+
+/**
+ * Detects and corrects accidentally inverted Hyderabad coordinates
+ * (e.g., longitude ~78.48 supplied as latitude, and latitude ~17.38 supplied as longitude)
+ */
+export function normalizeHyderabadCoordinates(
+  lat?: number,
+  lng?: number
+): { lat?: number; lng?: number; wasInverted: boolean } {
+  if (lat === undefined || lng === undefined || isNaN(lat) || isNaN(lng)) {
+    return { lat, lng, wasInverted: false };
+  }
+  // Check for inverted Hyderabad coordinates: lat ~70-85, lng ~10-25
+  if (lat >= 70 && lat <= 85 && lng >= 10 && lng <= 25) {
+    return { lat: lng, lng: lat, wasInverted: true };
+  }
+  return { lat, lng, wasInverted: false };
 }
 
 /**
@@ -121,6 +153,14 @@ export function isInGeographicBounds(
     lng >= bounds.minLng &&
     lng <= bounds.maxLng
   );
+}
+
+/**
+ * Validates if coordinates fall within the Republic of India boundaries.
+ */
+export function isCoordinateInIndia(lat?: number, lng?: number): boolean {
+  if (!isValidGlobalCoordinate(lat, lng)) return false;
+  return isInGeographicBounds(lat!, lng!, INDIA_COVERAGE_BOUNDS);
 }
 
 /**

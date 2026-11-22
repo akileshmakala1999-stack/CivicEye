@@ -22,7 +22,22 @@ export const AuthPortalPage: React.FC = () => {
   const { signIn, signUp, isAuthenticated, role } = useAuth();
 
   // Mode: 'signin' | 'signup'
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>(() =>
+    location.pathname === '/signup' ? 'signup' : 'signin'
+  );
+
+  // Sync authMode when URL route switches between /signin and /signup
+  useEffect(() => {
+    if (location.pathname === '/signup') {
+      setAuthMode('signup');
+      setErrorMessage(null);
+      setSuccessMessage(null);
+    } else if (location.pathname === '/signin') {
+      setAuthMode('signin');
+      setErrorMessage(null);
+      setSuccessMessage(null);
+    }
+  }, [location.pathname]);
 
   // Form State
   const [email, setEmail] = useState('');
