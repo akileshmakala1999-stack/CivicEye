@@ -2,7 +2,7 @@
 
 CivicEye is an open-source civic reporting, municipal intelligence, and digital twin platform for cities across India.
 
-- **Live Application Link**: [https://won-newer-felt-ralph.trycloudflare.com](https://won-newer-felt-ralph.trycloudflare.com)
+- **Official Live Application**: [https://civic-eye-pi-beige.vercel.app](https://civic-eye-pi-beige.vercel.app)
 - **Repository**: [https://github.com/akileshmakala1999-stack/CivicEye](https://github.com/akileshmakala1999-stack/CivicEye)
 
 ---
@@ -10,7 +10,7 @@ CivicEye is an open-source civic reporting, municipal intelligence, and digital 
 ## Accessing the Website
 
 Anyone with the link can open the interactive web app directly:
-- **Live Demo**: [Open CivicEye](https://won-newer-felt-ralph.trycloudflare.com)
+- **Production Website**: [https://civic-eye-pi-beige.vercel.app](https://civic-eye-pi-beige.vercel.app)
 - Works on desktop, tablet, and mobile browsers.
 
 ---
